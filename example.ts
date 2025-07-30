@@ -2,6 +2,8 @@ import { PushNotificationAction, RingApi } from "ring-client-api";
 import { readFile, writeFile } from "fs";
 import { promisify } from "util";
 import axios from "axios";
+import dotenv from 'dotenv';
+dotenv.config();
 
 async function example() {
   const n8nWebhookUrl:string = "https://ampeddigital.app.n8n.cloud/webhook/54ab2a8e-8b36-49f7-9c81-6af6f873f043"

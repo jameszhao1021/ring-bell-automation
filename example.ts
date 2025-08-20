@@ -4,6 +4,7 @@ import { promisify } from "util";
 import axios from "axios";
 import dotenv from "dotenv";
 import AWS from "aws-sdk";
+import { distinctUntilChanged } from 'rxjs/operators'
 
 dotenv.config();
 
@@ -19,11 +20,24 @@ async function example() {
 
  const n8nWebhookUrl:string = "https://ampeddigital.app.n8n.cloud/webhook/54ab2a8e-8b36-49f7-9c81-6af6f873f043";
 
+
+
+
   const { env } = process,
+    // ringApi = new RingApi({
+    //   refreshToken: env.RING_REFRESH_TOKEN!,
+    //   debug: true,
+    // }),
+
+    //test
+
     ringApi = new RingApi({
-      refreshToken: env.RING_REFRESH_TOKEN!,
-      debug: true,
-    }),
+  refreshToken: process.env.RING_REFRESH_TOKEN!,
+  systemId: 'amped-n8n-bridge',   // any stable string
+  debug: true,
+  // temporary fallback polling (see #4)
+  cameraStatusPollingSeconds: 20,
+}),
     locations = await ringApi.getLocations(),
     allCameras = await ringApi.getCameras();
 
@@ -31,6 +45,8 @@ async function example() {
     `Found ${locations.length} location(s) with ${allCameras.length} camera(s).`
   );
 
+
+  
   ringApi.onRefreshTokenUpdated.subscribe(
     async ({ newRefreshToken, oldRefreshToken }) => {
       console.log("Refresh Token Updated: ", newRefreshToken);
@@ -45,18 +61,47 @@ async function example() {
   );
 
     for (const location of locations) {
-    let haveConnected = false;
-    location.onConnected.subscribe((connected) => {
-      if (!haveConnected && !connected) {
-        return;
-      } else if (connected) {
-        haveConnected = true;
-      }
+      //original correct one
+    // let haveConnected = false;
 
-      const status = connected ? "Connected to" : "Disconnected from";
-      console.log(`**** ${status} location ${location.name} - ${location.id}`);
-    });
+    // console.log(`location ${location.name} - ${location.id}`);
+
+    // location.onConnected.subscribe((connected) => {
+    //   if (!haveConnected && !connected) {
+    //     return;
+    //   } else if (connected) {
+    //     haveConnected = true;
+    //   }
+
+    //   const status = connected ? "Connected to" : "Disconnected from";
+    //   console.log(`**** ${status} location ${location.name} - ${location.id}`);
+    // });
+
+
+  
+
+
+  // console.log(`Registering connection listener for: "${location.name}" (${location.id})`);
+
+  // location.onConnected.subscribe((connected: boolean) => {
+  //   const status = connected ? "✅ Connected to" : "❌ Disconnected from";
+  //   console.log(`${status} location "${location.name}" (${location.id})`);
+  // });
+
+  // // Optional: also log once right away (best-effort snapshot)
+  // // Some versions may expose a property/state; if not, this at least confirms we subscribed.
+  // console.log(`Listener registered for "${location.name}" (${location.id})`);
+
+//test
+location.onConnected
+    .pipe(distinctUntilChanged())
+    .subscribe((connected) => {
+      const status = connected ? 'Connected to' : 'Disconnected from'
+      console.log(`**** ${status} location ${location.name} - ${location.id}`)
+    })
   }
+
+  
 
   for (const camera of allCameras) {
     camera.onNewNotification.subscribe(async (notification) => {
@@ -74,12 +119,15 @@ async function example() {
 
       if (action === PushNotificationAction.Ding) {
         try {
+
+      
+
           const imageBuffer = await camera.getSnapshot();
 
           const s3Upload = await s3
             .upload({
               Bucket: env.AWS_S3_BUCKET_NAME!,
-              Key: "latest-snapshot.jpg", // always overwrite
+              Key: camera.name == "Front Door"?"latest-snapshot-front-door.jpg":camera.name == "Back Door"?"latest-snapshot-back-door.jpg":"latest-snapshot.jpg",
               Body: imageBuffer,
               ContentType: "image/jpeg",
               ACL: "public-read",
